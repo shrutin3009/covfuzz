@@ -80,6 +80,28 @@ make run FUZZ_SECONDS=300       # 5 minute campaign; the default is 24h
 Example `fuzz_stats.txt` fields: executed test cases, throughput (execs/sec), initial and final
 corpus size, number of coverage increases, edges covered, and edge coverage percentage.
 
+## Results
+
+One 24-hour campaign against pdftotext (xpdf 4.06), starting from 100 PDF seeds:
+
+| Metric | Value |
+|---|---|
+| Wall time | 86,400 s (24 h) |
+| Test cases executed | 53,327,045 |
+| Throughput | 617.21 execs/sec |
+| Corpus size | 100 → 500 (hit the `MAX_SEEDS` cap) |
+| Instrumented edges (8-bit counter slots) | 28,037 |
+| Edges covered | 3,474 |
+| Edge coverage | 12.39% |
+| Crashes | 0 |
+
+Edges covered includes the baseline pass over the unmutated seeds. Most new coverage came
+early in the campaign and growth flattened after that. This matches what you'd expect from
+bit-flip-only mutation on 4 KiB inputs: most mutated PDFs get rejected by the header and xref
+parsing, so the fuzzer rarely reaches the deeper stream, font and text-layout code. Finding no
+crashes points the same way. Structure-aware mutation, larger inputs or a PDF dictionary would
+be needed to get further (see [Limitations](#limitations)).
+
 ## Design decisions
 
 **In-process execution instead of fork per input.** Forking once per test case isolates each run
@@ -114,6 +136,8 @@ header, xref and early objects, and shorter inputs mean more executions per seco
 - Mutation is random bit flips only. There are no dictionaries, splicing or structure-aware
   mutations.
 - Only the first crash is saved, and crashes aren't deduplicated.
+- The corpus stops growing at 500 entries. Past that point, inputs that reach new edges still
+  add to the coverage map but can't be mutated further.
 - The target runs in-process, so memory leaks or global state in the target build up over a
   long campaign.
 - Retargeting means changing the argv built in `run_target_once` and the build hook in
